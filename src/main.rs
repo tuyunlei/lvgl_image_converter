@@ -1,37 +1,57 @@
-use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::fs;
 use std::process::exit;
+use crate::converter::Converter;
 
-fn load_file(filename: &str) -> File {
-    match File::open(filename) {
-        Ok(file) => file,
-        Err(e) => {
-            println!("Error when open file: {}", e.to_string());
-            exit(1)
-        }
-    }
-}
+mod config;
+mod converter;
+mod util;
 
 fn main() {
-    let file = load_file("config");
-    let lines = BufReader::new(file).lines();
+    let config = config::load_config();
+    println!("Config list:");
+    println!("cf={:?}", config.color_format);
+    println!("out_c={}", config.out_c);
+    println!("out_bin={}", config.out_bin);
+    println!("path={}", config.path);
+    println!("cf_palette_bgr_en={}", config.cf_palette_bgr_en);
+    println!("===========================================================");
 
-    for (i, line) in lines.into_iter().enumerate() {
-        match line {
-            Ok(line) => {
-                let split: Vec<_> = line.split('=').collect();
-                if split.len() != 2 {
-                    println!("Error config line {}: {}", i, line);
-                    exit(1);
+    let mut converter = Converter::new(&config, true);
+    match fs::read_dir(&config.path) {
+        Ok(dir) => {
+            for entry in dir {
+                match entry {
+                    Ok(entry) => {
+                        let path = entry.path();
+                        if !path.is_file() {
+                            continue;
+                        }
+                        if let Some(ext) = path.extension() {
+                            if ext == "c" || ext == "bin" || ext == "h" {
+                                continue;
+                            }
+                        }
+                        if let Some(filename) = path.file_name() {
+                            if filename == ".gitignore" {
+                                continue;
+                            }
+                        }
+
+                        println!("{:?}", path);
+                        println!("converting...");
+                        converter.convert(&path);
+                        println!("saving...");
+                    }
+                    Err(e) => {
+                        println!("Error when read directory entry: {}", e);
+                        exit(1);
+                    }
                 }
-                let key = split[0].trim();
-                let value = split[1].trim();
-                println!("key={} value={}", key, value);
             }
-            Err(e) => {
-                println!("Error when read lines: {}", e.to_string());
-                exit(1);
-            }
+        }
+        Err(e) => {
+            println!("Error when read directory '{}': {}", &config.path, e);
+            exit(1);
         }
     }
 }
